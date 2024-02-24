@@ -40,7 +40,7 @@ resource "google_compute_firewall" "deny_ssh" {
   name    = "${each.key}-deny-ssh"
   network = google_compute_network.vpc_network[each.key].self_link
 
-  deny {
+  allow {
     protocol = var.protocol
     ports    = [var.sshport]
   }
@@ -55,6 +55,7 @@ resource "google_compute_subnetwork" "webapp_subnet" {
   ip_cidr_range = each.value.webapp_subnet_cidr
   region        = each.value.region
   network       = google_compute_network.vpc_network[each.key].self_link
+  private_ip_google_access = true
 }
 
 resource "google_compute_subnetwork" "db_subnet" {
@@ -63,6 +64,55 @@ resource "google_compute_subnetwork" "db_subnet" {
   ip_cidr_range = each.value.db_subnet_cidr
   region        = each.value.region
   network       = google_compute_network.vpc_network[each.key].self_link
+}
+
+resource "random_password" "password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+resource "google_secret_manager_secret" "db_password_secret" {
+  secret_id = "db-password"
+
+  replication {
+    auto{}
+  }
+}
+
+resource "google_secret_manager_secret_version" "db_password" {
+  secret      = google_secret_manager_secret.db_password_secret.id
+  secret_data = base64encode(random_password.password.result)
+}
+
+resource "google_sql_database" "database" {
+  name     = var.dbname
+  instance = google_sql_database_instance.instance.name
+}
+
+resource "google_sql_database_instance" "instance" {
+  name             = "${var.dbname}-instance"
+  database_version = var.db_version
+  deletion_protection = false
+  # region           = var.region
+  # zone             = var.zone
+  # availability_type = regional
+  settings {
+    tier = "db-f1-micro"
+    disk_type = "pd-ssd"
+    disk_size = var.disk_size
+    # ipv4_enabled  = false
+    # private_network = google_compute_network.VPC
+  }
+  # backup_configuration {
+  #     enabled = true
+  #     binary_log_enabled = true
+  # }
+  # resource "google_sql_user" "users" {
+  # name     = "babuaravind"
+  # instance = google_sql_database_instance.main.name
+  # password =  random_password.password.result
+  # }
 }
 
 resource "google_compute_route" "webapp_route" {
@@ -82,6 +132,13 @@ resource "google_compute_instance" "custom_instance" {
     access_config {
     }
   }
+
+  metadata = {
+    DB_USER = "dbuser"
+    DB_NAME = "dbname"
+  }
+
+  metadata_startup_script = "./startup-script.sh"
 
   boot_disk {
     initialize_params {

@@ -104,3 +104,18 @@ variable "dest_range" {
   description = "dest_range"
   default = "0.0.0.0/0"
 }
+
+variable "db_version" {
+  description = "GCloud DB version"
+  default = "POSTGRES_16"
+}
+
+variable "disk_size" {
+  description = "SQL Disk Size"
+  default = 100
+}
+
+variable "dbname" {
+  description = "DB name"
+  default = "webapp"
+}
